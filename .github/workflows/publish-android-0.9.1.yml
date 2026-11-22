@@ -1,0 +1,30 @@
+name: Publish Mayleen Android 0.9.1
+on:
+  push:
+    branches: [main]
+    paths: [releases/v0.9.1.json]
+permissions:
+  contents: write
+concurrency: mayleen-android-v0.9.1
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify and publish the signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset=Baby_Feeding_Tracker_ARM64_v0.9.1.apk
+          tag=v0.9.1
+          expected=0fa337aca0c3a3ddcaaedf6743a690e7f2393e83e42c3cb894293708d5703ea0
+          repo_api="repos/$GITHUB_REPOSITORY"
+          gh api "$repo_api/contents/releases/$tag.json?ref=$GITHUB_SHA" --jq .content | base64 --decode > release.json
+          jq -er '.blobs | if type == "array" and length > 0 and length <= 32 and all(.[]; type == "string" and test("^[0-9a-f]{40}$")) then .[] else error("Invalid release manifest") end' release.json > blobs.txt
+          while IFS= read -r sha; do
+            gh api "$repo_api/git/blobs/$sha" --jq .content | base64 --decode
+          done < blobs.txt | gzip --decompress > "$asset"
+          printf '%s  %s\n' "$expected" "$asset" | sha256sum --check --strict
+          gh release create "$tag" "$asset" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Mayleen 0.9.1' --notes 'عرض مواعيد الرضعات والأدوية والسجل بنظام ١٢ ساعة مع صباحًا ومساءً.' --latest
